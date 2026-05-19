@@ -1,4 +1,6 @@
-lang="ko">
+```html
+<!DOCTYPE html>
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -278,6 +280,7 @@ lang="ko">
         const API_KEY = "37057e71f7e8b049505cae9eb95d3da6c41b9a4d915bc3b5d8f440ea149361d9"; 
         const NEIS_API_KEY = "89f71f30a00545d2b8fc928abf0fcaee"; 
 
+        // 공공데이터 에러 응답 파싱 및 안전한 처리 로직 강화
         function parseOpenApiError(text) {
             if(text.includes("SERVICE_KEY_IS_NOT_REGISTERED_ERROR")) return "제공기관 API 키 미등록 (동기화 1~2시간 대기 필요)";
             if(text.includes("INVALID_REQUEST_PARAMETER_ERROR")) return "잘못된 요청 파라미터 (지역 정보 오류 등)";
@@ -288,6 +291,9 @@ lang="ko">
             if(matchAuthMsg) return matchAuthMsg[1];
             const matchResultMsg = text.match(/<resultMsg>(.*?)<\/resultMsg>/);
             if(matchResultMsg && matchResultMsg[1] !== "NORMAL_SERVICE" && matchResultMsg[1] !== "NORMAL SERVICE") return matchResultMsg[1];
+            
+            // HTML 에러 페이지(서버 점검/오류) 방어 로직 추가
+            if (text.trim().startsWith("<") && !text.includes("<response>")) return "API 서버 점검 및 응답 지연";
             return null;
         }
 
@@ -317,12 +323,12 @@ lang="ko">
                         let sidoKor = sidoNameMap[addr.region_1depth_name] || addr.region_1depth_name.substring(0, 2);
                         return { address: addr.address_name, sido: sidoKor, sigungu: addr.region_2depth_name };
                     }
-                } catch (e) { console.warn("카카오 리버스 지오코딩 실패:", e); }
+                } catch (e) {}
             }
             
-            // 무료 오픈스트리트맵(OSM)을 이용한 주소 변환 (Fallback)
+            // 무료 오픈스트리트맵(OSM)을 이용한 주소 변환 (accept-language=ko 추가하여 한국어 반환 유도)
             try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=ko`);
                 const data = await res.json();
                 if (data && data.address) {
                     const sido = data.address.province || data.address.city || data.address.state || "서울";
@@ -331,7 +337,7 @@ lang="ko">
                     let sidoKor = sidoNameMap[sido] || sido.substring(0,2);
                     return { address: `${sido} ${sigungu} ${dong}`.trim(), sido: sidoKor, sigungu: sigungu };
                 }
-            } catch (e) { console.warn("OSM 리버스 지오코딩 실패:", e); }
+            } catch (e) {}
             
             return { address: `위도: ${lat.toFixed(4)}, 경도: ${lon.toFixed(4)}`, sido: "서울", sigungu: "종로구" };
         }
@@ -346,7 +352,7 @@ lang="ko">
                 } catch (e) { }
             }
             try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(schoolName)}`);
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(schoolName)}&accept-language=ko`);
                 const data = await res.json();
                 if (data?.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), source: '오픈스트리트맵' };
             } catch (e) { }
@@ -356,8 +362,37 @@ lang="ko">
         const sidoNameMap = { "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종", "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원", "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남", "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주", "제주도": "제주" };
         const regionMapping = { "서울": { nx: 60, ny: 127 }, "부산": { nx: 98, ny: 76 }, "대구": { nx: 89, ny: 90 }, "인천": { nx: 55, ny: 124 }, "광주": { nx: 58, ny: 74 }, "대전": { nx: 67, ny: 100 }, "울산": { nx: 102, ny: 84 }, "세종": { nx: 66, ny: 103 }, "경기": { nx: 60, ny: 120 }, "강원": { nx: 73, ny: 134 }, "충북": { nx: 69, ny: 107 }, "충남": { nx: 68, ny: 100 }, "전북": { nx: 63, ny: 89 }, "전남": { nx: 51, ny: 67 }, "경북": { nx: 89, ny: 91 }, "경남": { nx: 91, ny: 77 }, "제주": { nx: 52, ny: 38 } };
         const sigunguMapping = { "창원시 마산회원구": {nx: 89, ny: 74}, "창원시 마산합포구": {nx: 89, ny: 73}, "창원시 성산구": {nx: 90, ny: 73}, "창원시 의창구": {nx: 90, ny: 74}, "창원시 진해구": {nx: 90, ny: 71}, "수원시 장안구": {nx: 60, ny: 121}, "수원시 권선구": {nx: 60, ny: 120}, "수원시 팔달구": {nx: 60, ny: 121}, "수원시 영통구": {nx: 61, ny: 120} };
+        
+        // 체감온도(생활기상지수 API)용 행정동 코드 매핑
         const sidoAreaNo = { "서울": "1100000000", "부산": "2600000000", "대구": "2700000000", "인천": "2800000000", "광주": "2900000000", "대전": "3000000000", "울산": "3100000000", "세종": "3600000000", "경기": "4100000000", "강원": "4200000000", "충북": "4300000000", "충남": "4400000000", "전북": "4500000000", "전남": "4600000000", "경북": "4700000000", "경남": "4800000000", "제주": "5000000000" };
         const sigunguAreaNo = { "창원시 마산회원구": "4812700000", "창원시 마산합포구": "4812500000", "창원시 성산구": "4812300000", "창원시 의창구": "4812100000", "창원시 진해구": "4812900000", "수원시 장안구": "4111100000", "수원시 권선구": "4111300000", "수원시 팔달구": "4111500000", "수원시 영통구": "4111700000" };
+
+        // ================= 시간 계산 함수 =================
+        function getNcstTime() {
+            const now = new Date();
+            if (now.getMinutes() < 40) now.setHours(now.getHours() - 1);
+            const year = now.getFullYear(), month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0'), hours = String(now.getHours()).padStart(2, '0');
+            return { base_date: `${year}${month}${day}`, base_time: `${hours}00` };
+        }
+
+        function getVilageFcstTime() {
+            const now = new Date();
+            let h = now.getHours(), m = now.getMinutes();
+            if (h < 2 || (h === 2 && m < 15)) { now.setDate(now.getDate() - 1); now.setHours(23); } 
+            else if (h < 5 || (h === 5 && m < 15)) now.setHours(2);
+            else if (h < 8 || (h === 8 && m < 15)) now.setHours(5);
+            else if (h < 11 || (h === 11 && m < 15)) now.setHours(8);
+            else if (h < 14 || (h === 14 && m < 15)) now.setHours(11);
+            else if (h < 17 || (h === 17 && m < 15)) now.setHours(14);
+            else if (h < 20 || (h === 20 && m < 15)) now.setHours(17);
+            else if (h < 23 || (h === 23 && m < 15)) now.setHours(20);
+            else now.setHours(23);
+            const year = now.getFullYear(), month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0'), hours = String(now.getHours()).padStart(2, '0');
+            return { base_date: `${year}${month}${day}`, base_time: `${hours}00` };
+        }
+        // ================================================================
 
         const schoolLevelSelect = document.getElementById('schoolLevelSelect');
         const sidoSelect = document.getElementById('sidoSelect');
@@ -457,7 +492,6 @@ lang="ko">
                 document.getElementById('loadingText').textContent = "현위치 데이터를 가져오는 중...";
                 const loc = await getAddressFromCoords(lat, lon);
                 
-                // 검색 메뉴 초기화 (선택 해제)
                 schoolLevelSelect.value = "";
                 sidoSelect.value = "";
                 sigunguSelect.innerHTML = '<option value="">2. 시/군/구 선택</option>';
@@ -465,13 +499,12 @@ lang="ko">
                 schoolSelect.innerHTML = '<option value="">3. 학교 선택</option>';
                 schoolSelect.disabled = true;
 
-                // lat, lon 직접 전달하여 loadWeatherData 실행
                 await loadWeatherData("📍 내 주변 현위치", loc.sido, loc.sigungu, loc.address, lat, lon);
 
             }, (error) => {
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('errorMsg').classList.remove('hidden');
-                document.getElementById('errorDetail').textContent = "GPS 권한이 거부되었거나 현위치를 알 수 없습니다. 기기의 위치 서비스 설정과 브라우저 권한을 확인해주세요.";
+                document.getElementById('errorDetail').textContent = "GPS 권한이 거부되었거나 현위치를 알 수 없습니다. 브라우저 위치 권한을 확인해주세요.";
             }, { enableHighAccuracy: true });
         });
 
@@ -489,7 +522,6 @@ lang="ko">
             let precisionText = "📍 시군구 대표 좌표";
             let precisionColor = "text-yellow-800 bg-yellow-100"; 
 
-            // GPS로 직접 받은 경우 최우선으로 격자 변환
             if (inputLat && inputLon) {
                 const grid = convertLatLngToGrid(inputLat, inputLon);
                 nx = grid.nx; ny = grid.ny;
@@ -511,7 +543,7 @@ lang="ko">
             document.getElementById('coordStatus').className = `text-[10px] font-bold inline-block px-2.5 py-1 rounded-full shadow-sm mt-1 ${precisionColor}`;
 
             try {
-                // 병렬 호출
+                // 병렬 호출 (에러는 throw되어 하단 catch에서 처리됨)
                 const [weatherSuccess, dustData, sensibleTempResult, forecastText, alarmText] = await Promise.all([
                     fetchWeather(nx, ny, sido, sigungu),
                     fetchDust(sido, sigungu, address),
@@ -520,7 +552,6 @@ lang="ko">
                     fetchDustAlarm(sido) 
                 ]);
                 
-                // 1. 체감온도 UI
                 const tempEl = document.getElementById('sensibleTempContainer');
                 if (sensibleTempResult && !sensibleTempResult.match(/^[0-9.-]+$/)) {
                     tempEl.textContent = sensibleTempResult; 
@@ -530,13 +561,9 @@ lang="ko">
                     tempEl.className = "mb-1.5 bg-blue-100 border border-blue-200 text-blue-800 text-[11px] px-2.5 py-1 rounded-lg font-bold shadow-sm whitespace-nowrap transition-colors";
                 }
 
-                // 2. 대기질(6개 지표) 업데이트
                 updateDustUI(dustData);
-
-                // 3. 내일 예보 업데이트
                 document.getElementById('dustForecastMsg').innerHTML = forecastText.replace(/,/g, ', <br>');
 
-                // 4. 경보 배너 업데이트
                 const alarmBanner = document.getElementById('alarmBanner');
                 if (alarmText) {
                     alarmBanner.classList.remove('hidden');
@@ -550,6 +577,7 @@ lang="ko">
                 document.getElementById('schoolInfoArea').classList.remove('hidden');
                 document.getElementById('content').classList.remove('hidden');
             } catch (err) {
+                // 화면에 직관적인 에러 출력
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('schoolInfoArea').classList.remove('hidden');
                 document.getElementById('errorMsg').classList.remove('hidden');
@@ -557,12 +585,12 @@ lang="ko">
             }
         }
 
-        // ================= 신규 기능 API: 1. 내일의 미세먼지 예보 =================
+        // ================= API: 1. 내일의 미세먼지 예보 =================
         async function fetchDustForecast() {
             const today = new Date();
             const searchDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
             
-            today.setDate(today.getDate() + 1); // 내일 날짜
+            today.setDate(today.getDate() + 1); 
             const targetDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
             const url = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&searchDate=${searchDate}`;
@@ -572,7 +600,9 @@ lang="ko">
                 const text = await res.text();
                 if(parseOpenApiError(text)) return "예보 데이터 동기화 대기중...";
                 
-                const data = JSON.parse(text);
+                let data;
+                try { data = JSON.parse(text); } catch(e) { return "예보 데이터 파싱 오류"; }
+                
                 const items = data.response?.body?.items || [];
                 const tomorrowData = items.find(item => item.informCode === 'PM10' && item.informData === targetDate);
                 
@@ -583,7 +613,7 @@ lang="ko">
             } catch(e) { return "예보 정보를 불러올 수 없습니다."; }
         }
 
-        // ================= 신규 기능 API: 2. 대기질 경보 발령 현황 =================
+        // ================= API: 2. 대기질 경보 발령 현황 =================
         async function fetchDustAlarm(sido) {
             const yyyy = new Date().getFullYear();
             const url = `https://apis.data.go.kr/B552584/UlfptcaAlarmInqireSvc/getUlfptcaAlarmInfo?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&year=${yyyy}&pageNo=1&numOfRows=100`;
@@ -593,7 +623,300 @@ lang="ko">
                 const text = await res.text();
                 if(parseOpenApiError(text)) return null;
                 
-                const data = JSON.parse(text);
-                const items = data.response?.body?.items || [];
+                let data;
+                try { data = JSON.parse(text); } catch(e) { return null; }
                 
-                // 해
+                const items = data.response?.body?.items || [];
+                const activeAlarm = items.find(item => item.districtName && item.districtName.includes(sido) && (!item.clearDate || item.clearDate.trim() === ""));
+                
+                if(activeAlarm) {
+                    let itemStr = activeAlarm.itemCode === "PM10" ? "미세먼지" : "초미세먼지";
+                    return `현재 [${activeAlarm.districtName}] 지역에 ${itemStr} ${activeAlarm.issueGbn} 발령중! 호흡기 건강에 주의하세요.`;
+                }
+                return null;
+            } catch(e) { return null; }
+        }
+
+        // ================= API: 3. 체감온도 2.0 (안전파싱 적용) =================
+        async function fetchSensibleTempApi(sido, sigungu) {
+            const areaNo = sigunguAreaNo[sigungu] || sidoAreaNo[sido] || "1100000000";
+            const now = new Date();
+            let h = now.getHours();
+            if (h < 6) { now.setDate(now.getDate() - 1); now.setHours(18); }
+            else if (h < 18) { now.setHours(6); }
+            else { now.setHours(18); }
+            
+            const timeStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}${String(now.getHours()).padStart(2,'0')}`;
+            // 🚨 반드시 V2 규격을 사용해야 합니다! 
+            const url = `https://apis.data.go.kr/1360000/LivingWthrIdxServiceV2/getSenTaIdxV2?ServiceKey=${encodeURIComponent(API_KEY)}&areaNo=${areaNo}&time=${timeStr}&dataType=JSON&pageNo=1&numOfRows=10`;
+            
+            try {
+                const res = await fetch(url); const text = await res.text();
+                const parsedErr = parseOpenApiError(text); if(parsedErr) return parsedErr; 
+                
+                let data;
+                try { data = JSON.parse(text); } catch(e) { return "응답오류"; }
+                
+                if(data.response?.header?.resultCode === "00" && data.response.body?.items?.item?.length > 0) {
+                    const item = data.response.body.items.item[0];
+                    const announceHour = parseInt(timeStr.substring(8, 10)); const currentHour = new Date().getHours();
+                    let targetH = currentHour - announceHour; if (targetH < 0) targetH += 24; if (targetH < 1) targetH = 1; 
+                    let val = item[`h${targetH}`]; if (val === undefined || val === "") val = item.h1 || item.h2 || item.h3;
+                    return val ? `${val}` : "--";
+                }
+            } catch(e) { return "통신오류"; } return "--";
+        }
+
+        async function fetchWeather(nx, ny, sido, sigungu) {
+            document.getElementById('weatherStationDisplay').textContent = `관측지역: ${sido} ${sigungu} (X:${nx}, Y:${ny})`;
+            const ncstTime = getNcstTime(); const vilageTime = getVilageFcstTime();
+            const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?ServiceKey=${encodeURIComponent(API_KEY)}&pageNo=1&numOfRows=20&dataType=JSON&base_date=${ncstTime.base_date}&base_time=${ncstTime.base_time}&nx=${nx}&ny=${ny}`;
+            const vilageUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?ServiceKey=${encodeURIComponent(API_KEY)}&pageNo=1&numOfRows=300&dataType=JSON&base_date=${vilageTime.base_date}&base_time=${vilageTime.base_time}&nx=${nx}&ny=${ny}`;
+            
+            const [ncstRes, vilageRes] = await Promise.all([fetch(ncstUrl), fetch(vilageUrl)]);
+            const ncstText = await ncstRes.text(); const vilageText = await vilageRes.text(); 
+            
+            const err1 = parseOpenApiError(ncstText); if (err1) throw new Error(`[기상청 실황 API] ${err1}`);
+            const err2 = parseOpenApiError(vilageText); if (err2) throw new Error(`[기상청 단기예보 API] ${err2}`);
+
+            let ncstData, vilageData;
+            try {
+                ncstData = JSON.parse(ncstText); vilageData = JSON.parse(vilageText);
+            } catch(e) { throw new Error(`[기상청 API] 데이터 파싱 오류 (서버 점검 지연)`); }
+            
+            if(ncstData.response?.header?.resultCode !== "00") throw new Error(`[기상청 실황] ${ncstData.response?.header?.resultMsg}`);
+            
+            let currentTemp = "--", currentSky = "1", currentPty = "0", currentReh = "--", currentWsd = "--", currentRn1 = "--";
+            if(ncstData.response.body?.items) {
+                ncstData.response.body.items.item.forEach(item => {
+                    if(item.category === "T1H") currentTemp = item.obsrValue; 
+                    if(item.category === "PTY") currentPty = item.obsrValue;  
+                    if(item.category === "REH") currentReh = item.obsrValue;  
+                    if(item.category === "WSD") currentWsd = item.obsrValue;  
+                    if(item.category === "RN1") currentRn1 = item.obsrValue;  
+                });
+            }
+
+            const hourlyMap = {};
+            if(vilageData.response.body?.items) {
+                vilageData.response.body.items.item.forEach(item => {
+                    const dt = `${item.fcstDate}${item.fcstTime}`; 
+                    if (!hourlyMap[dt]) hourlyMap[dt] = { date: item.fcstDate, time: item.fcstTime, temp: '--', sky: '1', pty: '0', reh: '--', wsd: '--', pcp: '0' };
+                    if (Object.keys(hourlyMap).length === 1 && item.category === "SKY") currentSky = item.fcstValue;
+                    if (item.category === "TMP") hourlyMap[dt].temp = item.fcstValue;
+                    if (item.category === "SKY") hourlyMap[dt].sky = item.fcstValue; 
+                    if (item.category === "PTY") hourlyMap[dt].pty = item.fcstValue; 
+                    if (item.category === "REH") hourlyMap[dt].reh = item.fcstValue; 
+                    if (item.category === "WSD") hourlyMap[dt].wsd = item.fcstValue; 
+                    if (item.category === "PCP") hourlyMap[dt].pcp = item.fcstValue; 
+                });
+            }
+            
+            const nowHour = parseInt(String(new Date().getHours()).padStart(2, '0') + "00");
+            const nowDate = new Date();
+            const todayStr = `${nowDate.getFullYear()}${String(nowDate.getMonth()+1).padStart(2,'0')}${String(nowDate.getDate()).padStart(2,'0')}`;
+            let hourlyList = Object.keys(hourlyMap).sort().map(k => hourlyMap[k]).filter(data => !(data.date === todayStr && parseInt(data.time) <= nowHour)).slice(0, 24); 
+
+            updateCurrentWeatherUI(currentTemp, currentSky, currentPty, currentReh, currentWsd, currentRn1);
+            updateHourlyWeatherUI(hourlyList);
+            return true;
+        }
+
+        async function fetchDust(sido, sigungu, address) {
+            let umdName = address.match(/([가-힣]+[동읍면])/)?.[1] || "";
+            let targetStation = null;
+
+            if (umdName) {
+                const tmUrl = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getTMStdrCrdnt?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&umdName=${encodeURIComponent(umdName)}&numOfRows=1&pageNo=1`;
+                const tmRes = await fetch(tmUrl); const tmText = await tmRes.text();
+                const tmErr = parseOpenApiError(tmText); if (tmErr) throw new Error(`[환경공단 TM좌표 API] ${tmErr}`);
+
+                let tmData;
+                try { tmData = JSON.parse(tmText); } catch(e) {}
+                
+                if (tmData && tmData.response?.header?.resultCode === "00" && tmData.response.body?.items?.length > 0) {
+                    const { tmX, tmY } = tmData.response.body.items[0];
+                    const nearUrl = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getNearbyMsrstnList?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&tmX=${tmX}&tmY=${tmY}`;
+                    const nearRes = await fetch(nearUrl); const nearDataText = await nearRes.text();
+                    
+                    let nearData; try { nearData = JSON.parse(nearDataText); } catch(e) {}
+                    if (nearData && nearData.response?.header?.resultCode === "00" && nearData.response.body?.items?.length > 0) targetStation = nearData.response.body.items[0].stationName; 
+                }
+            }
+
+            if (targetStation) {
+                const dustUrl = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&numOfRows=1&pageNo=1&stationName=${encodeURIComponent(targetStation)}&dataTerm=DAILY&ver=1.3`;
+                const dustRes = await fetch(dustUrl); const dustText = await dustRes.text();
+                const dustErr = parseOpenApiError(dustText); if (dustErr) throw new Error(`[환경공단 측정소 API] ${dustErr}`);
+                
+                let dustData;
+                try { dustData = JSON.parse(dustText); } catch(e) { throw new Error(`[환경공단 측정소 API] 데이터 파싱 오류`); }
+                
+                if (dustData.response?.header?.resultCode === "00" && dustData.response.body?.items?.length > 0) {
+                    return { ...dustData.response.body.items[0], stationName: targetStation, sido, sigungu };
+                }
+            }
+            
+            return await fetchDustFallback(sido, sigungu, address);
+        }
+
+        async function fetchDustFallback(sido, sigungu, address) {
+            const url = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&numOfRows=100&pageNo=1&sidoName=${encodeURIComponent(sido)}&ver=1.3`;
+            const res = await fetch(url); const text = await res.text();
+            const err = parseOpenApiError(text); if (err) throw new Error(`[환경공단 시도 대기질 API] ${err}`);
+            
+            let data;
+            try { data = JSON.parse(text); } catch(e) { throw new Error(`[환경공단 시도 대기질 API] 데이터 파싱 오류`); }
+            
+            if(data.response?.header?.resultCode !== "00") throw new Error(`[환경공단 API] ${data.response?.header?.resultMsg}`);
+            
+            const items = data.response.body.items;
+            let stationData = items.find(item => address.includes(item.stationName)) ||
+                              items.find(item => { const keyword = item.stationName.replace(/[동읍면]$/, ''); return keyword.length >= 2 && address.includes(keyword); }) ||
+                              items.find(item => item.stationName.includes(sigungu.split(' ')[0].replace(/[시군구]$/, ''))) ||
+                              items.find(item => item.stationName.includes(sigungu.split(' ').pop().replace(/[시군구]$/, ''))) || items[0];
+            return { ...stationData, sido, sigungu };
+        }
+
+        // ================= UI Updates (Weather & Dust) =================
+        function updateCurrentWeatherUI(temp, sky, pty, reh, wsd, rn1) {
+            document.getElementById('temp').textContent = `${temp}°`;
+            const info = (pty !== "0") ? (pty==="1"||pty==="4"||pty==="5"?{i:"🌧️",d:pty==="4"?"소나기":"비"}:pty==="3"||pty==="7"?{i:"❄️",d:"눈"}:{i:"🌨️",d:"비/눈"}) 
+                                       : (sky==="1"?{i:"☀️",d:"맑음"}:sky==="3"?{i:"⛅",d:"구름많음"}:{i:"☁️",d:"흐림"});
+            document.getElementById('weatherIcon').textContent = info.i;
+            document.getElementById('weatherDesc').textContent = info.d;
+            document.getElementById('currentReh').textContent = `${reh}%`;
+            document.getElementById('currentWsd').textContent = `${wsd}m/s`;
+            let rainText = rn1; if(rn1 === "0" || rn1 === "강수없음") rainText = "-"; else if (!rn1.includes("mm")) rainText = `${rn1}mm`;
+            document.getElementById('currentRn1').textContent = rainText;
+        }
+
+        function updateHourlyWeatherUI(hourlyList) {
+            const container = document.getElementById('hourlyContainer');
+            container.innerHTML = '';
+            
+            const nowDate = new Date();
+            const todayStr = `${nowDate.getFullYear()}${String(nowDate.getMonth()+1).padStart(2,'0')}${String(nowDate.getDate()).padStart(2,'0')}`;
+            
+            hourlyList.forEach((data, index) => {
+                const info = (data.pty !== "0") ? (data.pty==="1"||data.pty==="4"||data.pty==="5"?{i:"🌧️"}:data.pty==="3"||data.pty==="7"?{i:"❄️"}:{i:"🌨️"}) : (data.sky==="1"?{i:"☀️"}:data.sky==="3"?{i:"⛅"}:{i:"☁️"});
+                const month = parseInt(data.date.substring(4, 6), 10); const day = parseInt(data.date.substring(6, 8), 10);
+                let rainText = data.pcp; if (rainText && rainText.includes("미만")) rainText = "~1mm"; 
+                const hasRain = data.pcp && data.pcp !== "강수없음" && data.pcp !== "0mm" && data.pcp !== "0";
+                
+                const isTomorrow = data.date !== todayStr;
+                const bgClass = isTomorrow ? 'bg-yellow-50 border-yellow-100' : 'bg-white border-gray-100';
+                const innerBgClass = isTomorrow ? 'bg-white/60' : 'bg-gray-50';
+                const dateTextColor = isTomorrow ? 'text-yellow-600' : 'text-blue-400';
+                
+                container.innerHTML += `
+                    <div class="flex flex-col items-center min-w-[5.5rem] snap-center ${bgClass} rounded-2xl py-3.5 px-2 border shadow-sm flex-shrink-0 select-none transition-colors">
+                        <span class="text-[9px] ${dateTextColor} font-bold mb-0.5">${month}.${day}</span>
+                        <span class="text-[12px] text-gray-700 font-bold mb-1 tracking-wider">${data.time.substring(0, 2)}시${index === 0 ? '<span class="text-blue-500">*</span>' : ''}</span>
+                        <span class="text-3xl mb-1.5 drop-shadow-sm">${info.i}</span>
+                        <span class="text-[15px] font-black text-gray-800 mb-3">${data.temp}°</span>
+                        <div class="w-full flex flex-col gap-1 text-[10px] text-gray-600 font-semibold ${innerBgClass} rounded-lg p-1.5">
+                            <div class="flex justify-between items-center w-full"><div class="flex items-center gap-0.5"><span class="text-blue-400 text-[11px]">💧</span><span class="text-[9px] font-normal text-gray-400">습도</span></div><span>${data.reh}%</span></div>
+                            <div class="flex justify-between items-center w-full"><div class="flex items-center gap-0.5"><span class="text-gray-400 text-[11px]">💨</span><span class="text-[9px] font-normal text-gray-400">바람</span></div><span>${data.wsd}m/s</span></div>
+                            ${hasRain ? `<div class="flex justify-between items-center w-full text-blue-600"><div class="flex items-center gap-0.5"><span class="text-[11px]">☔</span><span class="text-[9px] font-normal text-blue-400/80">강수</span></div><span>${rainText}</span></div>` 
+                                      : `<div class="flex justify-between items-center w-full opacity-30 grayscale"><div class="flex items-center gap-0.5"><span class="text-[11px]">☔</span><span class="text-[9px] font-normal">강수</span></div><span>-</span></div>`}
+                        </div>
+                    </div>`;
+            });
+        }
+
+        const DUST_ICONS = {
+            "1": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#38BDF8"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><path d="M 38 50 Q 42 45 46 50" stroke="#333" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 54 50 Q 58 45 62 50" stroke="#333" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="33" cy="58" r="4" fill="#ffA0A0" opacity="0.6"/><circle cx="67" cy="58" r="4" fill="#ffA0A0" opacity="0.6"/><path d="M 45 56 Q 50 66 55 56 Z" fill="#333"/><path d="M 47 57 Q 50 64 53 57 Z" fill="#EF4444"/></svg>`,
+            "2": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#84CC16"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><circle cx="41" cy="49" r="3.5" fill="#333"/><circle cx="59" cy="49" r="3.5" fill="#333"/><circle cx="33" cy="56" r="4" fill="#ffA0A0" opacity="0.6"/><circle cx="67" cy="56" r="4" fill="#ffA0A0" opacity="0.6"/><path d="M 46 56 Q 50 60 54 56" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
+            "3": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#F97316"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><line x1="37" y1="50" x2="45" y2="50" stroke="#333" stroke-width="3" stroke-linecap="round"/><line x1="55" y1="50" x2="63" y2="50" stroke="#333" stroke-width="3" stroke-linecap="round"/><circle cx="33" cy="56" r="4" fill="#ffA0A0" opacity="0.8"/><circle cx="67" cy="56" r="4" fill="#ffA0A0" opacity="0.8"/><line x1="48" y1="58" x2="52" y2="58" stroke="#333" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+            "4": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#EF4444"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><path d="M 38 46 L 44 52 M 44 46 L 38 52" stroke="#333" stroke-width="2.5" stroke-linecap="round"/><path d="M 56 46 L 62 52 M 62 46 L 56 52" stroke="#333" stroke-width="2.5" stroke-linecap="round"/><circle cx="33" cy="58" r="4" fill="#ffA0A0" opacity="0.8"/><circle cx="67" cy="58" r="4" fill="#ffA0A0" opacity="0.8"/><path d="M 46 60 Q 50 56 54 60" stroke="#333" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>`,
+            "default": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#9CA3AF"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><circle cx="41" cy="49" r="3" fill="#333"/><circle cx="59" cy="49" r="3" fill="#333"/><path d="M 46 58 L 54 58" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`
+        };
+
+        const gInfo = {
+            "1": { text: "좋음", color: "bg-blue-100 text-blue-700", dot: "text-blue-500" },
+            "2": { text: "보통", color: "bg-green-100 text-green-700", dot: "text-green-500" },
+            "3": { text: "나쁨", color: "bg-orange-100 text-orange-600", dot: "text-orange-500" },
+            "4": { text: "매우나쁨", color: "bg-red-100 text-red-700", dot: "text-red-500" },
+            "default": { text: "정보없음", color: "bg-gray-100 text-gray-500", dot: "text-gray-400" }
+        };
+
+        function getSmallCardGrade(gradeStr) { return gInfo[gradeStr] || gInfo["default"]; }
+
+        function updateDustUI(item) {
+            document.getElementById('stationNameDisplay').textContent = `측정소: ${item.stationName || "--"} (${item.sido || ""} ${item.sigungu || ""})`;
+            
+            const p10 = gInfo[item.pm10Grade] || gInfo["default"];
+            document.getElementById('pm10Value').textContent = item.pm10Value && item.pm10Value !== "-" ? item.pm10Value : "0";
+            document.getElementById('pm10Grade').textContent = p10.text;
+            document.getElementById('pm10Grade').className = `mt-3 px-4 py-1.5 rounded-full text-xs font-bold w-full ${p10.color}`;
+            document.getElementById('pm10Icon').innerHTML = DUST_ICONS[item.pm10Grade] || DUST_ICONS["default"];
+
+            const p25 = gInfo[item.pm25Grade] || gInfo["default"];
+            document.getElementById('pm25Value').textContent = item.pm25Value && item.pm25Value !== "-" ? item.pm25Value : "0";
+            document.getElementById('pm25Grade').textContent = p25.text;
+            document.getElementById('pm25Grade').className = `mt-3 px-4 py-1.5 rounded-full text-xs font-bold w-full ${p25.color}`;
+            document.getElementById('pm25Icon').innerHTML = DUST_ICONS[item.pm25Grade] || DUST_ICONS["default"];
+
+            const setupSmallCard = (idPrefix, val, gradeStr) => {
+                document.getElementById(`${idPrefix}Value`).textContent = val && val !== "-" ? val : "0";
+                const info = getSmallCardGrade(gradeStr);
+                const el = document.getElementById(`${idPrefix}Grade`);
+                el.textContent = info.text;
+                el.className = `text-[10px] font-bold px-2 py-0.5 rounded mt-1 inline-block w-full ${info.color}`;
+            };
+
+            setupSmallCard('o3', item.o3Value, item.o3Grade);
+            setupSmallCard('no2', item.no2Value, item.no2Grade);
+            setupSmallCard('co', item.coValue, item.coGrade);
+            setupSmallCard('so2', item.so2Value, item.so2Grade);
+        }
+
+        // ================= Settings Modal Event Listeners =================
+        document.getElementById('settingsOpenBtn').addEventListener('click', () => {
+            document.getElementById('settingsModal').classList.remove('hidden');
+            document.getElementById('settingMsg').textContent = "";
+        });
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => document.getElementById('settingsModal').classList.add('hidden'));
+        document.getElementById('settingsModal').addEventListener('click', (e) => { if (e.target === document.getElementById('settingsModal')) document.getElementById('settingsModal').classList.add('hidden'); });
+
+        document.getElementById('settingSearchBtn').addEventListener('click', async () => {
+            const keyword = document.getElementById('settingSchoolSearch').value.trim();
+            const msgEl = document.getElementById('settingMsg');
+            const selectEl = document.getElementById('settingSchoolSelect');
+            if(!keyword) { msgEl.textContent = "학교명을 입력해주세요."; msgEl.className = "text-xs text-red-500 mb-3 text-center font-medium h-4"; return; }
+            
+            selectEl.innerHTML = '<option value="">검색 중...</option>'; selectEl.classList.remove('hidden'); selectEl.disabled = true; msgEl.textContent = "";
+            try {
+                const res = await fetch(`https://open.neis.go.kr/hub/schoolInfo?KEY=${NEIS_API_KEY}&Type=json&pIndex=1&pSize=50&SCHUL_NM=${encodeURIComponent(keyword)}`);
+                const data = await res.json(); if(!data.schoolInfo) throw new Error("검색 결과가 없습니다.");
+                selectEl.innerHTML = '<option value="">▼ 저장할 학교를 선택하세요</option>';
+                data.schoolInfo[1].row.forEach(s => {
+                    const sido = sidoNameMap[s.LCTN_SC_NM] || s.LCTN_SC_NM.substring(0, 2);
+                    const parts = s.ORG_RDNMA.split(' '); let sigungu = parts[1]; if (parts.length > 2 && parts[2].endsWith('구')) sigungu += ' ' + parts[2];
+                    const val = JSON.stringify({ schoolName: s.SCHUL_NM, sido, fullSido: s.LCTN_SC_NM, sigungu, address: s.ORG_RDNMA });
+                    selectEl.innerHTML += `<option value='${val}'>${s.SCHUL_NM} (${s.ORG_RDNMA})</option>`;
+                });
+                selectEl.disabled = false;
+            } catch(e) { selectEl.innerHTML = `<option value="">${e.message}</option>`; }
+        });
+
+        document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+            const val = document.getElementById('settingSchoolSelect').value;
+            const msgEl = document.getElementById('settingMsg');
+            if(val) {
+                localStorage.setItem('defaultSchoolInfo', val);
+                msgEl.className = "text-xs text-blue-600 mb-3 text-center font-medium h-4"; msgEl.textContent = "저장되었습니다! 화면을 새로고침합니다.";
+                setTimeout(() => location.reload(), 800);
+            } else {
+                msgEl.className = "text-xs text-red-500 mb-3 text-center font-medium h-4"; msgEl.textContent = "목록에서 학교를 정확히 선택해주세요.";
+            }
+        });
+
+        initApp();
+    </script>
+</body>
+</html>
+
+
+```
