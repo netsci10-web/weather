@@ -1,1 +1,883 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우리 학교 날씨 & 미세먼지</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #e2e8f0; }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.4); }
+        .loader { border-top-color: #3b82f6; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 커스텀 스크롤바 */
+        .custom-scrollbar::-webkit-scrollbar { height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.4); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(59, 130, 246, 0.7); }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen text-gray-800 p-4 lg:p-8 relative">
 
+    <!-- ================= ALARM BANNER (경보/주의보 발령 시 노출) ================= -->
+    <div id="alarmBanner" class="fixed top-0 left-0 w-full bg-red-600 text-white font-bold text-sm px-4 py-3 z-[100] flex justify-center items-center gap-2 shadow-lg hidden animate-[pulse_2s_ease-in-out_infinite]">
+        <span class="text-xl">🚨</span>
+        <p id="alarmText">미세먼지 비상저감조치 및 경보 발령 상태를 확인중입니다.</p>
+        <button onclick="document.getElementById('alarmBanner').classList.add('hidden')" class="absolute right-4 text-white/80 hover:text-white">✕</button>
+    </div>
+
+    <!-- 2단 레이아웃 -->
+    <div class="glass-card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row mt-4">
+        
+        <!-- ================= LEFT SIDEBAR (학교 선택 및 정보) ================= -->
+        <div class="w-full md:w-1/3 bg-gradient-to-br from-blue-600 to-blue-800 p-6 md:p-8 flex flex-col text-white flex-shrink-0 relative">
+            
+            <div class="flex justify-between items-start mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold tracking-tight mb-2">🏫 스쿨 웨더</h1>
+                    <p class="text-blue-100 text-sm">우리 학교의 정확한 날씨와 공기질</p>
+                </div>
+                <!-- GPS & 설정 버튼 그룹 -->
+                <div class="flex gap-2">
+                    <button id="gpsBtn" class="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors backdrop-blur-md border border-white/20" title="현위치 날씨 보기">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    </button>
+                    <button id="settingsOpenBtn" class="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors backdrop-blur-md border border-white/20" title="환경 설정">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- School Dropdown Selector -->
+            <div class="bg-white/10 backdrop-blur-md p-5 rounded-2xl border border-white/20 mb-6 shadow-sm">
+                <label class="block text-xs font-bold text-blue-100 mb-3 uppercase tracking-wider">학교 검색 및 선택</label>
+                <div class="flex flex-col gap-3">
+                    <select id="schoolLevelSelect" class="block w-full bg-white text-gray-800 text-sm rounded-lg focus:ring-2 focus:ring-blue-300 outline-none p-3 shadow-sm cursor-pointer transition-all mb-1">
+                        <option value="">🏫 모든 학교급</option>
+                        <option value="초등학교">초등학교</option>
+                        <option value="중학교">중학교</option>
+                        <option value="고등학교">고등학교</option>
+                    </select>
+
+                    <select id="sidoSelect" class="block w-full bg-white text-gray-800 text-sm rounded-lg focus:ring-2 focus:ring-blue-300 outline-none p-3 shadow-sm cursor-pointer transition-all">
+                        <option value="">1. 시/도 선택</option>
+                        <option value="서울특별시">서울특별시</option>
+                        <option value="부산광역시">부산광역시</option>
+                        <option value="대구광역시">대구광역시</option>
+                        <option value="인천광역시">인천광역시</option>
+                        <option value="광주광역시">광주광역시</option>
+                        <option value="대전광역시">대전광역시</option>
+                        <option value="울산광역시">울산광역시</option>
+                        <option value="세종특별자치시">세종특별자치시</option>
+                        <option value="경기도">경기도</option>
+                        <option value="강원특별자치도">강원특별자치도</option>
+                        <option value="충청북도">충청북도</option>
+                        <option value="충청남도">충청남도</option>
+                        <option value="전북특별자치도">전북특별자치도</option>
+                        <option value="전라남도">전라남도</option>
+                        <option value="경상북도">경상북도</option>
+                        <option value="경상남도">경상남도</option>
+                        <option value="제주특별자치도">제주특별자치도</option>
+                    </select>
+
+                    <select id="sigunguSelect" disabled class="block w-full bg-white text-gray-800 text-sm rounded-lg focus:ring-2 focus:ring-blue-300 outline-none p-3 shadow-sm cursor-pointer disabled:opacity-70 disabled:bg-gray-200 transition-all">
+                        <option value="">2. 시/군/구 선택</option>
+                    </select>
+
+                    <select id="schoolSelect" disabled class="block w-full bg-blue-50 text-blue-900 font-bold text-sm rounded-lg focus:ring-2 focus:ring-blue-300 outline-none p-3 shadow-sm cursor-pointer disabled:opacity-70 disabled:bg-gray-200 transition-all">
+                        <option value="">3. 학교 선택</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="schoolInfoArea" class="mt-auto bg-white/10 backdrop-blur-md p-5 rounded-2xl border border-white/20 shadow-sm hidden">
+                <h2 id="displaySchoolName" class="text-xl font-bold text-white">--</h2>
+                <p id="displayAddress" class="text-xs text-blue-100 mt-1 opacity-80">--</p>
+                <div class="mt-3">
+                    <span id="coordStatus" class="text-[10px] font-bold text-blue-800 bg-blue-100 px-2.5 py-1 rounded-full shadow-sm">📍 좌표 적용 상태</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= RIGHT MAIN CONTENT ================= -->
+        <div class="w-full md:w-2/3 p-6 md:p-8 bg-white relative min-h-[600px] flex flex-col justify-center">
+            
+            <div id="loading" class="flex flex-col items-center justify-center py-20 hidden">
+                <div class="loader ease-linear rounded-full border-4 border-gray-100 h-16 w-16 mb-4"></div>
+                <p class="text-gray-500 font-medium" id="loadingText">데이터를 불러오는 중...</p>
+            </div>
+
+            <div id="errorMsg" class="hidden p-6 mb-4 rounded-2xl bg-red-50 border-2 border-red-200 shadow-sm" role="alert">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-3xl">⚠️</span>
+                    <h3 class="font-bold text-red-800 text-lg">알림</h3>
+                </div>
+                <p id="errorDetail" class="text-sm text-red-700 font-medium break-words mt-2 mb-4 bg-white/60 p-3 rounded-lg"></p>
+                <ul class="text-xs text-red-600 list-disc pl-5 space-y-1">
+                    <li><strong>SERVICE_KEY_IS_NOT_REGISTERED_ERROR:</strong> 키 발급 후 서버 동기화에 1~2시간이 소요됩니다.</li>
+                    <li>GPS 활용을 위해 브라우저의 위치 권한이 켜져 있는지 확인해주세요.</li>
+                    <li>일시적인 기상청/환경공단 서버 점검일 수 있습니다.</li>
+                </ul>
+            </div>
+
+            <div id="content" class="hidden h-full flex flex-col">
+                
+                <!-- Weather Section -->
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-3xl p-6 mb-6 shadow-sm border border-blue-100/50 relative">
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="flex flex-col">
+                            <h2 class="text-gray-500 text-sm font-bold mb-2 tracking-wide flex flex-wrap items-center gap-2">
+                                현재 날씨 (실황)
+                                <span id="weatherStationDisplay" class="text-[10px] font-normal text-blue-700 bg-blue-100/50 border border-blue-200/50 px-2 py-0.5 rounded-full whitespace-nowrap">관측지역: 확인중</span>
+                            </h2>
+                            <div class="flex items-end gap-3">
+                                <span id="temp" class="text-5xl font-extrabold text-blue-900 tracking-tighter">--°</span>
+                                <div id="sensibleTempContainer" class="mb-1.5 bg-blue-100 border border-blue-200 text-blue-800 text-[11px] px-2.5 py-1 rounded-lg font-bold shadow-sm whitespace-nowrap transition-colors">
+                                    체감 --°
+                                </div>
+                            </div>
+                            <p id="weatherDesc" class="text-blue-700 font-semibold mt-1">정보 없음</p>
+                            
+                            <div class="flex flex-wrap gap-2 mt-3 text-xs font-semibold text-blue-800/80">
+                                <div class="flex items-center gap-1 bg-white/60 px-2.5 py-1.5 rounded-lg border border-white">
+                                    <span class="text-blue-500 text-sm mr-0.5">💧</span>
+                                    <span class="text-gray-500 font-medium">습도</span>
+                                    <span id="currentReh" class="ml-0.5">--%</span>
+                                </div>
+                                <div class="flex items-center gap-1 bg-white/60 px-2.5 py-1.5 rounded-lg border border-white">
+                                    <span class="text-gray-500 text-sm mr-0.5">💨</span>
+                                    <span class="text-gray-500 font-medium">바람</span>
+                                    <span id="currentWsd" class="ml-0.5">--m/s</span>
+                                </div>
+                                <div class="flex items-center gap-1 bg-white/60 px-2.5 py-1.5 rounded-lg border border-white">
+                                    <span class="text-blue-600 text-sm mr-0.5">☔</span>
+                                    <span class="text-gray-500 font-medium">강수량</span>
+                                    <span id="currentRn1" class="ml-0.5">--mm</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="weatherIcon" class="text-7xl drop-shadow-lg self-center">☁️</div>
+                    </div>
+
+                    <div class="border-t border-blue-200/50 pt-5 mt-2">
+                        <div class="flex justify-between items-end mb-3">
+                            <h3 class="text-xs font-bold text-blue-800/70 flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                시간대별 예보 (최대 24시간)
+                            </h3>
+                            <span class="text-[10px] font-bold text-blue-400 bg-blue-50 px-2 py-0.5 rounded-full">가로 스크롤 지원 👉</span>
+                        </div>
+                        <div id="hourlyContainer" class="flex gap-3 overflow-x-auto pb-4 snap-x custom-scrollbar cursor-grab active:cursor-grabbing w-full">
+                            <!-- Hourly Items Injected by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Air Quality Section (Upgraded 6 Pollutants & Forecast) -->
+                <div class="flex justify-between items-center mb-3 px-1">
+                    <h2 class="text-gray-600 text-sm font-bold tracking-wide">종합 대기질 현황</h2>
+                    <span id="stationNameDisplay" class="text-[10px] font-bold text-gray-500 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-full shadow-sm text-right">측정소: 확인중</span>
+                </div>
+                
+                <!-- Main PM10 / PM2.5 Grid -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="bg-gray-50 rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col items-center text-center transition-transform hover:scale-[1.02]">
+                        <span class="text-xs text-gray-500 font-bold mb-2">미세먼지 (PM10)</span>
+                        <div id="pm10Icon" class="h-16 flex items-center justify-center mb-1"></div>
+                        <span id="pm10Value" class="text-2xl font-black text-gray-800">--</span>
+                        <span class="text-[10px] text-gray-400 mt-1">µg/m³</span>
+                        <span id="pm10Grade" class="mt-3 px-4 py-1.5 rounded-full text-xs font-bold bg-gray-200 text-gray-600 w-full">대기중</span>
+                    </div>
+
+                    <div class="bg-gray-50 rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col items-center text-center transition-transform hover:scale-[1.02]">
+                        <span class="text-xs text-gray-500 font-bold mb-2">초미세먼지 (PM2.5)</span>
+                        <div id="pm25Icon" class="h-16 flex items-center justify-center mb-1"></div>
+                        <span id="pm25Value" class="text-2xl font-black text-gray-800">--</span>
+                        <span class="text-[10px] text-gray-400 mt-1">µg/m³</span>
+                        <span id="pm25Grade" class="mt-3 px-4 py-1.5 rounded-full text-xs font-bold bg-gray-200 text-gray-600 w-full">대기중</span>
+                    </div>
+                </div>
+
+                <!-- 4 Additional Pollutants Grid (O3, NO2, CO, SO2) -->
+                <div class="grid grid-cols-4 gap-2 mb-6">
+                    <div class="bg-gray-50 rounded-xl p-2.5 text-center border border-gray-100">
+                        <p class="text-[10px] font-bold text-gray-400 mb-1">오존(O3)</p>
+                        <p id="o3Value" class="text-sm font-bold text-gray-700">--</p>
+                        <span id="o3Grade" class="text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block bg-gray-200 text-gray-500">대기중</span>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-2.5 text-center border border-gray-100">
+                        <p class="text-[10px] font-bold text-gray-400 mb-1">이산화질소</p>
+                        <p id="no2Value" class="text-sm font-bold text-gray-700">--</p>
+                        <span id="no2Grade" class="text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block bg-gray-200 text-gray-500">대기중</span>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-2.5 text-center border border-gray-100">
+                        <p class="text-[10px] font-bold text-gray-400 mb-1">일산화탄소</p>
+                        <p id="coValue" class="text-sm font-bold text-gray-700">--</p>
+                        <span id="coGrade" class="text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block bg-gray-200 text-gray-500">대기중</span>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-2.5 text-center border border-gray-100">
+                        <p class="text-[10px] font-bold text-gray-400 mb-1">아황산가스</p>
+                        <p id="so2Value" class="text-sm font-bold text-gray-700">--</p>
+                        <span id="so2Grade" class="text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block bg-gray-200 text-gray-500">대기중</span>
+                    </div>
+                </div>
+
+                <!-- Tomorrow's Forecast Briefing -->
+                <div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-2 shadow-sm flex items-start gap-3">
+                    <span class="text-2xl mt-0.5">📢</span>
+                    <div>
+                        <h4 class="text-xs font-bold text-blue-800 mb-1">내일의 미세먼지 예보</h4>
+                        <p id="dustForecastMsg" class="text-sm text-blue-900/80 font-medium leading-relaxed tracking-tight">예보 데이터를 불러오는 중입니다...</p>
+                    </div>
+                </div>
+                
+                <!-- Settings & Footer -->
+                <div class="mt-auto border-t border-gray-100 pt-5">
+                    <div class="flex flex-col xl:flex-row justify-between items-center gap-4">
+                        <div class="w-full xl:w-1/2">
+                            <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase">⚙️ 위경도 정확도 향상 (선택)</label>
+                            <input type="text" id="kakaoApiKeyInput" placeholder="카카오 REST API 키 입력" class="w-full p-2.5 text-xs rounded-lg border border-gray-200 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-200 transition-shadow text-gray-600">
+                        </div>
+                        <div class="flex gap-2">
+                            <a href="https://www.weather.go.kr" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg transition-colors border border-blue-200 flex items-center gap-1.5">🌐 기상청</a>
+                            <a href="https://www.airkorea.or.kr" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-bold rounded-lg transition-colors border border-green-200 flex items-center gap-1.5">🌐 에어코리아</a>
+                        </div>
+                    </div>
+                    <div class="text-center md:text-right text-[10px] text-gray-400 mt-4 font-medium">
+                        <p>데이터 제공: 나이스 교육정보, 기상청, 환경공단</p>
+                        <p id="updateTime" class="mt-0.5">업데이트: --</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= SETTINGS MODAL ================= -->
+    <div id="settingsModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 hidden backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 overflow-hidden">
+            <div class="bg-gray-50 px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="font-bold text-gray-800">⚙️ 환경 설정</h3>
+                <button id="closeSettingsBtn" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+            </div>
+            <div class="p-5">
+                <label class="block text-xs font-bold text-gray-600 mb-2">기본 학교 설정 (앱 실행 시 자동 로드)</label>
+                <div class="flex gap-2 mb-3">
+                    <input type="text" id="settingSchoolSearch" placeholder="학교명 검색 (예: 마산중앙초)" class="w-full p-2.5 text-sm rounded-lg border border-gray-300 outline-none focus:ring-2 focus:ring-blue-200" onkeypress="if(event.key==='Enter') document.getElementById('settingSearchBtn').click();">
+                    <button id="settingSearchBtn" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors whitespace-nowrap">검색</button>
+                </div>
+                <select id="settingSchoolSelect" class="w-full p-2.5 text-sm rounded-lg border border-gray-300 outline-none focus:ring-2 focus:ring-blue-200 mb-2 hidden"></select>
+                <p id="settingMsg" class="text-xs text-blue-500 mb-3 text-center font-medium h-4"></p>
+                <button id="saveSettingsBtn" class="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-lg transition-colors">저장 후 새로고침</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = "37057e71f7e8b049505cae9eb95d3da6c41b9a4d915bc3b5d8f440ea149361d9"; 
+        const NEIS_API_KEY = "89f71f30a00545d2b8fc928abf0fcaee"; 
+
+        function parseOpenApiError(text) {
+            if(text.includes("SERVICE_KEY_IS_NOT_REGISTERED_ERROR")) return "제공기관 API 키 미등록 (동기화 1~2시간 대기 필요)";
+            if(text.includes("INVALID_REQUEST_PARAMETER_ERROR")) return "잘못된 요청 파라미터 (지역 정보 오류 등)";
+            if(text.includes("LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR")) return "일일 트래픽 한도 초과";
+            if(text.includes("DEADLINE_HAS_EXPIRED_ERROR")) return "활용기간 만료";
+            
+            const matchAuthMsg = text.match(/<returnAuthMsg>(.*?)<\/returnAuthMsg>/);
+            if(matchAuthMsg) return matchAuthMsg[1];
+            const matchResultMsg = text.match(/<resultMsg>(.*?)<\/resultMsg>/);
+            if(matchResultMsg && matchResultMsg[1] !== "NORMAL_SERVICE" && matchResultMsg[1] !== "NORMAL SERVICE") return matchResultMsg[1];
+            return null;
+        }
+
+        function convertLatLngToGrid(lat, lon) {
+            const RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0, OLON = 126.0, OLAT = 38.0, XO = 43, YO = 136;
+            const DEGRAD = Math.PI / 180.0, re = RE / GRID;
+            const slat1 = SLAT1 * DEGRAD, slat2 = SLAT2 * DEGRAD, olon = OLON * DEGRAD, olat = OLAT * DEGRAD;
+            let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+            sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
+            let sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5); sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+            let ro = Math.tan(Math.PI * 0.25 + olat * 0.5); ro = re * sf / Math.pow(ro, sn);
+            let ra = Math.tan(Math.PI * 0.25 + (lat) * DEGRAD * 0.5); ra = re * sf / Math.pow(ra, sn);
+            let theta = lon * DEGRAD - olon;
+            if (theta > Math.PI) theta -= 2.0 * Math.PI; if (theta < -Math.PI) theta += 2.0 * Math.PI;
+            theta *= sn;
+            return { nx: Math.floor(ra * Math.sin(theta) + XO + 0.5), ny: Math.floor(ro - ra * Math.cos(theta) + YO + 0.5) };
+        }
+
+        async function getAddressFromCoords(lat, lon) {
+            const kakaoKey = document.getElementById('kakaoApiKeyInput').value.trim();
+            if (kakaoKey) {
+                try {
+                    const res = await fetch(`https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lon}&y=${lat}`, { headers: { 'Authorization': `KakaoAK ${kakaoKey}` } });
+                    const data = await res.json();
+                    if (data.documents?.length > 0) {
+                        const addr = data.documents[0].address;
+                        let sidoKor = sidoNameMap[addr.region_1depth_name] || addr.region_1depth_name.substring(0, 2);
+                        return { address: addr.address_name, sido: sidoKor, sigungu: addr.region_2depth_name };
+                    }
+                } catch (e) { console.warn("카카오 리버스 지오코딩 실패:", e); }
+            }
+            
+            // 무료 오픈스트리트맵(OSM)을 이용한 주소 변환 (Fallback)
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                const data = await res.json();
+                if (data && data.address) {
+                    const sido = data.address.province || data.address.city || data.address.state || "서울";
+                    const sigungu = data.address.city_district || data.address.county || data.address.borough || data.address.city || "";
+                    const dong = data.address.suburb || data.address.town || data.address.village || "";
+                    let sidoKor = sidoNameMap[sido] || sido.substring(0,2);
+                    return { address: `${sido} ${sigungu} ${dong}`.trim(), sido: sidoKor, sigungu: sigungu };
+                }
+            } catch (e) { console.warn("OSM 리버스 지오코딩 실패:", e); }
+            
+            return { address: `위도: ${lat.toFixed(4)}, 경도: ${lon.toFixed(4)}`, sido: "서울", sigungu: "종로구" };
+        }
+
+        async function getCoordinates(schoolName, address) {
+            const kakaoKey = document.getElementById('kakaoApiKeyInput').value.trim();
+            if (kakaoKey) {
+                try {
+                    const res = await fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(address)}`, { headers: { 'Authorization': `KakaoAK ${kakaoKey}` } });
+                    const data = await res.json();
+                    if (data.documents?.length > 0) return { lat: parseFloat(data.documents[0].y), lon: parseFloat(data.documents[0].x), source: '카카오' };
+                } catch (e) { }
+            }
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(schoolName)}`);
+                const data = await res.json();
+                if (data?.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), source: '오픈스트리트맵' };
+            } catch (e) { }
+            return null;
+        }
+
+        const sidoNameMap = { "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종", "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원", "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남", "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주", "제주도": "제주" };
+        const regionMapping = { "서울": { nx: 60, ny: 127 }, "부산": { nx: 98, ny: 76 }, "대구": { nx: 89, ny: 90 }, "인천": { nx: 55, ny: 124 }, "광주": { nx: 58, ny: 74 }, "대전": { nx: 67, ny: 100 }, "울산": { nx: 102, ny: 84 }, "세종": { nx: 66, ny: 103 }, "경기": { nx: 60, ny: 120 }, "강원": { nx: 73, ny: 134 }, "충북": { nx: 69, ny: 107 }, "충남": { nx: 68, ny: 100 }, "전북": { nx: 63, ny: 89 }, "전남": { nx: 51, ny: 67 }, "경북": { nx: 89, ny: 91 }, "경남": { nx: 91, ny: 77 }, "제주": { nx: 52, ny: 38 } };
+        const sigunguMapping = { "창원시 마산회원구": {nx: 89, ny: 74}, "창원시 마산합포구": {nx: 89, ny: 73}, "창원시 성산구": {nx: 90, ny: 73}, "창원시 의창구": {nx: 90, ny: 74}, "창원시 진해구": {nx: 90, ny: 71}, "수원시 장안구": {nx: 60, ny: 121}, "수원시 권선구": {nx: 60, ny: 120}, "수원시 팔달구": {nx: 60, ny: 121}, "수원시 영통구": {nx: 61, ny: 120} };
+        const sidoAreaNo = { "서울": "1100000000", "부산": "2600000000", "대구": "2700000000", "인천": "2800000000", "광주": "2900000000", "대전": "3000000000", "울산": "3100000000", "세종": "3600000000", "경기": "4100000000", "강원": "4200000000", "충북": "4300000000", "충남": "4400000000", "전북": "4500000000", "전남": "4600000000", "경북": "4700000000", "경남": "4800000000", "제주": "5000000000" };
+        const sigunguAreaNo = { "창원시 마산회원구": "4812700000", "창원시 마산합포구": "4812500000", "창원시 성산구": "4812300000", "창원시 의창구": "4812100000", "창원시 진해구": "4812900000", "수원시 장안구": "4111100000", "수원시 권선구": "4111300000", "수원시 팔달구": "4111500000", "수원시 영통구": "4111700000" };
+
+        const schoolLevelSelect = document.getElementById('schoolLevelSelect');
+        const sidoSelect = document.getElementById('sidoSelect');
+        const sigunguSelect = document.getElementById('sigunguSelect');
+        const schoolSelect = document.getElementById('schoolSelect');
+        
+        let cachedSchools = [];
+
+        async function initApp() {
+            let defaultSchool = { schoolName: "마산중앙초등학교", sido: "경남", fullSido: "경상남도", sigungu: "창원시 마산합포구", address: "경상남도 창원시 마산합포구 완월동4길 20" };
+            const savedSchool = localStorage.getItem('defaultSchoolInfo');
+            if (savedSchool) { try { defaultSchool = JSON.parse(savedSchool); } catch(e) {} }
+
+            sidoSelect.value = defaultSchool.fullSido;
+            await loadSigunguForSido(defaultSchool.fullSido, defaultSchool.sigungu, defaultSchool.schoolName, true);
+            await loadWeatherData(defaultSchool.schoolName, defaultSchool.sido, defaultSchool.sigungu, defaultSchool.address);
+        }
+
+        async function loadSigunguForSido(targetSido, defaultSigungu = null, defaultSchool = null, isInit = false) {
+            if (!isInit) {
+                sigunguSelect.disabled = true; schoolSelect.disabled = true;
+                sigunguSelect.innerHTML = '<option value="">시/군/구 불러오는 중...</option>';
+            }
+            try {
+                const res = await fetch(`https://open.neis.go.kr/hub/schoolInfo?KEY=${NEIS_API_KEY}&Type=json&pSize=1000&LCTN_SC_NM=${encodeURIComponent(targetSido)}&pIndex=1`);
+                const data = await res.json();
+                let schools = data.schoolInfo[1].row;
+                const totalPages = Math.ceil(data.schoolInfo[0].head[0].list_total_count / 1000);
+                const promises = [];
+                for(let i=2; i<=totalPages; i++) promises.push(fetch(`https://open.neis.go.kr/hub/schoolInfo?KEY=${NEIS_API_KEY}&Type=json&pSize=1000&LCTN_SC_NM=${encodeURIComponent(targetSido)}&pIndex=${i}`).then(r=>r.json()));
+                const results = await Promise.all(promises);
+                results.forEach(d => { if(d.schoolInfo) schools = schools.concat(d.schoolInfo[1].row); });
+                cachedSchools = schools;
+
+                const sigungus = new Set();
+                schools.forEach(s => {
+                    const parts = s.ORG_RDNMA.split(' ');
+                    if (parts.length > 1) { let sg = parts[1]; if (parts.length > 2 && parts[2].endsWith('구')) sg += ' ' + parts[2]; sigungus.add(sg); }
+                });
+
+                sigunguSelect.innerHTML = '<option value="">2. 시/군/구 선택</option>';
+                Array.from(sigungus).sort().forEach(sg => sigunguSelect.innerHTML += `<option value="${sg}">${sg}</option>`);
+                sigunguSelect.disabled = false;
+                if (defaultSigungu && sigungus.has(defaultSigungu)) {
+                    sigunguSelect.value = defaultSigungu;
+                    loadSchoolsForSigungu(defaultSigungu, defaultSchool);
+                }
+            } catch (err) {}
+        }
+
+        function loadSchoolsForSigungu(targetSigungu, defaultSchool = null) {
+            const levelFilter = schoolLevelSelect.value; 
+            const filteredSchools = cachedSchools.filter(s => {
+                const parts = s.ORG_RDNMA.split(' ');
+                let sg = parts[1]; if (parts.length > 2 && parts[2].endsWith('구')) sg += ' ' + parts[2];
+                let matchLevel = levelFilter ? (s.SCHUL_KND_SC_NM === levelFilter || s.SCHUL_NM.includes(levelFilter)) : true;
+                return sg === targetSigungu && matchLevel;
+            });
+            schoolSelect.innerHTML = '<option value="">3. 학교 선택 (▼)</option>';
+            filteredSchools.sort((a,b) => a.SCHUL_NM.localeCompare(b.SCHUL_NM)).forEach(s => {
+                const optionValue = `${sidoNameMap[s.LCTN_SC_NM] || s.LCTN_SC_NM.substring(0,2)}|${targetSigungu}|${s.ORG_RDNMA}|${s.SCHUL_NM}`;
+                schoolSelect.innerHTML += `<option value="${optionValue}">${s.SCHUL_NM}</option>`;
+            });
+            schoolSelect.disabled = false;
+            if (defaultSchool) Array.from(schoolSelect.options).forEach(opt => { if (opt.textContent === defaultSchool) schoolSelect.value = opt.value; });
+        }
+
+        schoolLevelSelect.addEventListener('change', () => { if(sigunguSelect.value) loadSchoolsForSigungu(sigunguSelect.value); });
+        sidoSelect.addEventListener('change', (e) => { if(e.target.value) loadSigunguForSido(e.target.value); });
+        sigunguSelect.addEventListener('change', (e) => { if(e.target.value) loadSchoolsForSigungu(e.target.value); });
+        schoolSelect.addEventListener('change', (e) => {
+            if (!e.target.value) return;
+            const [sido, sigungu, address, schoolName] = e.target.value.split('|');
+            loadWeatherData(schoolName, sido, sigungu, address);
+        });
+
+        // 🟢 ================= GPS 현위치 탐색 ================= 🟢
+        document.getElementById('gpsBtn').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                document.getElementById('schoolInfoArea').classList.add('hidden');
+                document.getElementById('content').classList.add('hidden');
+                document.getElementById('errorMsg').classList.remove('hidden');
+                document.getElementById('errorDetail').textContent = "이 브라우저 및 기기에서는 위치(GPS) 정보를 지원하지 않습니다.";
+                return;
+            }
+            
+            document.getElementById('schoolInfoArea').classList.add('hidden');
+            document.getElementById('content').classList.add('hidden');
+            document.getElementById('errorMsg').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('loadingText').textContent = "GPS 현위치를 탐색 중입니다...";
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                document.getElementById('loadingText').textContent = "현위치 데이터를 가져오는 중...";
+                const loc = await getAddressFromCoords(lat, lon);
+                
+                // 검색 메뉴 초기화 (선택 해제)
+                schoolLevelSelect.value = "";
+                sidoSelect.value = "";
+                sigunguSelect.innerHTML = '<option value="">2. 시/군/구 선택</option>';
+                sigunguSelect.disabled = true;
+                schoolSelect.innerHTML = '<option value="">3. 학교 선택</option>';
+                schoolSelect.disabled = true;
+
+                // lat, lon 직접 전달하여 loadWeatherData 실행
+                await loadWeatherData("📍 내 주변 현위치", loc.sido, loc.sigungu, loc.address, lat, lon);
+
+            }, (error) => {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('errorMsg').classList.remove('hidden');
+                document.getElementById('errorDetail').textContent = "GPS 권한이 거부되었거나 현위치를 알 수 없습니다. 기기의 위치 서비스 설정과 브라우저 권한을 확인해주세요.";
+            }, { enableHighAccuracy: true });
+        });
+
+        // 🚨 ============ MAIN API LOADER ============ 🚨
+        async function loadWeatherData(schoolName, sido, sigungu, address, inputLat = null, inputLon = null) {
+            document.getElementById('schoolInfoArea').classList.add('hidden');
+            document.getElementById('content').classList.add('hidden');
+            document.getElementById('errorMsg').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            
+            document.getElementById('displaySchoolName').textContent = schoolName;
+            document.getElementById('displayAddress').textContent = address;
+
+            let nx, ny;
+            let precisionText = "📍 시군구 대표 좌표";
+            let precisionColor = "text-yellow-800 bg-yellow-100"; 
+
+            // GPS로 직접 받은 경우 최우선으로 격자 변환
+            if (inputLat && inputLon) {
+                const grid = convertLatLngToGrid(inputLat, inputLon);
+                nx = grid.nx; ny = grid.ny;
+                precisionText = `📍 GPS 현위치 좌표 적용!`;
+                precisionColor = "text-blue-800 bg-blue-100"; 
+            } else {
+                const coords = await getCoordinates(schoolName, address);
+                if (coords) {
+                    const grid = convertLatLngToGrid(coords.lat, coords.lon); nx = grid.nx; ny = grid.ny;
+                    precisionText = `📍 ${coords.source} 좌표 적용!`;
+                    precisionColor = "text-blue-800 bg-blue-100";
+                } else {
+                    const grid = sigunguMapping[sigungu] || regionMapping[sido] || {nx: 60, ny: 127}; nx = grid.nx; ny = grid.ny;
+                    precisionText = "📍 시군구 대표 좌표 (정확도 낮음)";
+                }
+            }
+
+            document.getElementById('coordStatus').textContent = precisionText;
+            document.getElementById('coordStatus').className = `text-[10px] font-bold inline-block px-2.5 py-1 rounded-full shadow-sm mt-1 ${precisionColor}`;
+
+            try {
+                // 병렬 호출
+                const [weatherSuccess, dustData, sensibleTempResult, forecastText, alarmText] = await Promise.all([
+                    fetchWeather(nx, ny, sido, sigungu),
+                    fetchDust(sido, sigungu, address),
+                    fetchSensibleTempApi(sido, sigungu),
+                    fetchDustForecast(), 
+                    fetchDustAlarm(sido) 
+                ]);
+                
+                // 1. 체감온도 UI
+                const tempEl = document.getElementById('sensibleTempContainer');
+                if (sensibleTempResult && !sensibleTempResult.match(/^[0-9.-]+$/)) {
+                    tempEl.textContent = sensibleTempResult; 
+                    tempEl.className = "mb-1.5 bg-yellow-100 border border-yellow-200 text-yellow-700 text-[10px] sm:text-[11px] px-2.5 py-1 rounded-lg font-bold shadow-sm whitespace-nowrap transition-colors";
+                } else {
+                    tempEl.innerHTML = `체감 ${sensibleTempResult || "--"}°`;
+                    tempEl.className = "mb-1.5 bg-blue-100 border border-blue-200 text-blue-800 text-[11px] px-2.5 py-1 rounded-lg font-bold shadow-sm whitespace-nowrap transition-colors";
+                }
+
+                // 2. 대기질(6개 지표) 업데이트
+                updateDustUI(dustData);
+
+                // 3. 내일 예보 업데이트
+                document.getElementById('dustForecastMsg').innerHTML = forecastText.replace(/,/g, ', <br>');
+
+                // 4. 경보 배너 업데이트
+                const alarmBanner = document.getElementById('alarmBanner');
+                if (alarmText) {
+                    alarmBanner.classList.remove('hidden');
+                    document.getElementById('alarmText').textContent = alarmText;
+                } else {
+                    alarmBanner.classList.add('hidden');
+                }
+                
+                document.getElementById('updateTime').textContent = `업데이트: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('schoolInfoArea').classList.remove('hidden');
+                document.getElementById('content').classList.remove('hidden');
+            } catch (err) {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('schoolInfoArea').classList.remove('hidden');
+                document.getElementById('errorMsg').classList.remove('hidden');
+                document.getElementById('errorDetail').textContent = err.message; 
+            }
+        }
+
+        // ================= 신규 기능 API: 1. 내일의 미세먼지 예보 =================
+        async function fetchDustForecast() {
+            const today = new Date();
+            const searchDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+            
+            today.setDate(today.getDate() + 1); // 내일 날짜
+            const targetDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+            const url = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&searchDate=${searchDate}`;
+            
+            try {
+                const res = await fetch(url);
+                const text = await res.text();
+                if(parseOpenApiError(text)) return "예보 데이터 동기화 대기중...";
+                
+                const data = JSON.parse(text);
+                const items = data.response?.body?.items || [];
+                const tomorrowData = items.find(item => item.informCode === 'PM10' && item.informData === targetDate);
+                
+                if(tomorrowData && tomorrowData.informOverall) {
+                    return tomorrowData.informOverall;
+                }
+                return "아직 내일의 예보가 발표되지 않았습니다.";
+            } catch(e) { return "예보 정보를 불러올 수 없습니다."; }
+        }
+
+        // ================= 신규 기능 API: 2. 대기질 경보 발령 현황 =================
+        async function fetchDustAlarm(sido) {
+            const yyyy = new Date().getFullYear();
+            const url = `https://apis.data.go.kr/B552584/UlfptcaAlarmInqireSvc/getUlfptcaAlarmInfo?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&year=${yyyy}&pageNo=1&numOfRows=100`;
+            
+            try {
+                const res = await fetch(url);
+                const text = await res.text();
+                if(parseOpenApiError(text)) return null;
+                
+                const data = JSON.parse(text);
+                const items = data.response?.body?.items || [];
+                
+                // 해당 시/도에 속하며, 해제일(clearDate)이 없는(비어있는) 발령 건수 찾기
+                const activeAlarm = items.find(item => item.districtName && item.districtName.includes(sido) && (!item.clearDate || item.clearDate.trim() === ""));
+                
+                if(activeAlarm) {
+                    let itemStr = activeAlarm.itemCode === "PM10" ? "미세먼지" : "초미세먼지";
+                    return `현재 [${activeAlarm.districtName}] 지역에 ${itemStr} ${activeAlarm.issueGbn} 발령중! 호흡기 건강에 주의하세요.`;
+                }
+                return null;
+            } catch(e) { return null; }
+        }
+
+        // 체감온도 3.0 API
+        async function fetchSensibleTempApi(sido, sigungu) {
+            const areaNo = sigunguAreaNo[sigungu] || sidoAreaNo[sido] || "1100000000";
+            const now = new Date();
+            let h = now.getHours();
+            if (h < 6) { now.setDate(now.getDate() - 1); now.setHours(18); }
+            else if (h < 18) { now.setHours(6); }
+            else { now.setHours(18); }
+            
+            const timeStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}${String(now.getHours()).padStart(2,'0')}`;
+            const url = `https://apis.data.go.kr/1360000/LivingWthrIdxServiceV3/getSenTaIdxV3?ServiceKey=${encodeURIComponent(API_KEY)}&areaNo=${areaNo}&time=${timeStr}&dataType=JSON&pageNo=1&numOfRows=10`;
+            
+            try {
+                const res = await fetch(url); const text = await res.text();
+                const parsedErr = parseOpenApiError(text); if(parsedErr) return parsedErr; 
+                
+                const data = JSON.parse(text);
+                if(data.response?.header?.resultCode === "00" && data.response.body?.items?.item?.length > 0) {
+                    const item = data.response.body.items.item[0];
+                    const announceHour = parseInt(timeStr.substring(8, 10)); const currentHour = new Date().getHours();
+                    let targetH = currentHour - announceHour; if (targetH < 0) targetH += 24; if (targetH < 1) targetH = 1; 
+                    let val = item[`h${targetH}`]; if (val === undefined || val === "") val = item.h1 || item.h2 || item.h3;
+                    return val ? `${val}` : "--";
+                }
+            } catch(e) { return "통신오류"; } return "--";
+        }
+
+        async function fetchWeather(nx, ny, sido, sigungu) {
+            document.getElementById('weatherStationDisplay').textContent = `관측지역: ${sido} ${sigungu} (X:${nx}, Y:${ny})`;
+            const ncstTime = getNcstTime(); const vilageTime = getVilageFcstTime();
+            const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?ServiceKey=${encodeURIComponent(API_KEY)}&pageNo=1&numOfRows=20&dataType=JSON&base_date=${ncstTime.base_date}&base_time=${ncstTime.base_time}&nx=${nx}&ny=${ny}`;
+            const vilageUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?ServiceKey=${encodeURIComponent(API_KEY)}&pageNo=1&numOfRows=300&dataType=JSON&base_date=${vilageTime.base_date}&base_time=${vilageTime.base_time}&nx=${nx}&ny=${ny}`;
+            
+            const [ncstRes, vilageRes] = await Promise.all([fetch(ncstUrl), fetch(vilageUrl)]);
+            const ncstText = await ncstRes.text(); const vilageText = await vilageRes.text(); 
+            
+            const err1 = parseOpenApiError(ncstText); if (err1) throw new Error(`[기상청 실황 API] ${err1}`);
+            const err2 = parseOpenApiError(vilageText); if (err2) throw new Error(`[기상청 단기예보 API] ${err2}`);
+
+            const ncstData = JSON.parse(ncstText); const vilageData = JSON.parse(vilageText);
+            if(ncstData.response?.header?.resultCode !== "00") throw new Error(`[기상청] ${ncstData.response?.header?.resultMsg}`);
+            
+            let currentTemp = "--", currentSky = "1", currentPty = "0", currentReh = "--", currentWsd = "--", currentRn1 = "--";
+            if(ncstData.response.body?.items) {
+                ncstData.response.body.items.item.forEach(item => {
+                    if(item.category === "T1H") currentTemp = item.obsrValue; 
+                    if(item.category === "PTY") currentPty = item.obsrValue;  
+                    if(item.category === "REH") currentReh = item.obsrValue;  
+                    if(item.category === "WSD") currentWsd = item.obsrValue;  
+                    if(item.category === "RN1") currentRn1 = item.obsrValue;  
+                });
+            }
+
+            const hourlyMap = {};
+            if(vilageData.response.body?.items) {
+                vilageData.response.body.items.item.forEach(item => {
+                    const dt = `${item.fcstDate}${item.fcstTime}`; 
+                    if (!hourlyMap[dt]) hourlyMap[dt] = { date: item.fcstDate, time: item.fcstTime, temp: '--', sky: '1', pty: '0', reh: '--', wsd: '--', pcp: '0' };
+                    if (Object.keys(hourlyMap).length === 1 && item.category === "SKY") currentSky = item.fcstValue;
+                    if (item.category === "TMP") hourlyMap[dt].temp = item.fcstValue;
+                    if (item.category === "SKY") hourlyMap[dt].sky = item.fcstValue; 
+                    if (item.category === "PTY") hourlyMap[dt].pty = item.fcstValue; 
+                    if (item.category === "REH") hourlyMap[dt].reh = item.fcstValue; 
+                    if (item.category === "WSD") hourlyMap[dt].wsd = item.fcstValue; 
+                    if (item.category === "PCP") hourlyMap[dt].pcp = item.fcstValue; 
+                });
+            }
+            
+            const nowHour = parseInt(String(new Date().getHours()).padStart(2, '0') + "00");
+            const nowDate = new Date();
+            const todayStr = `${nowDate.getFullYear()}${String(nowDate.getMonth()+1).padStart(2,'0')}${String(nowDate.getDate()).padStart(2,'0')}`;
+            let hourlyList = Object.keys(hourlyMap).sort().map(k => hourlyMap[k]).filter(data => !(data.date === todayStr && parseInt(data.time) <= nowHour)).slice(0, 24); 
+
+            updateCurrentWeatherUI(currentTemp, currentSky, currentPty, currentReh, currentWsd, currentRn1);
+            updateHourlyWeatherUI(hourlyList);
+            return true;
+        }
+
+        async function fetchDust(sido, sigungu, address) {
+            let umdName = address.match(/([가-힣]+[동읍면])/)?.[1] || "";
+            let targetStation = null;
+
+            if (umdName) {
+                const tmUrl = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getTMStdrCrdnt?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&umdName=${encodeURIComponent(umdName)}&numOfRows=1&pageNo=1`;
+                const tmRes = await fetch(tmUrl); const tmText = await tmRes.text();
+                const tmErr = parseOpenApiError(tmText); if (tmErr) throw new Error(`[환경공단 TM좌표 API] ${tmErr}`);
+
+                const tmData = JSON.parse(tmText);
+                if (tmData.response?.header?.resultCode === "00" && tmData.response.body?.items?.length > 0) {
+                    const { tmX, tmY } = tmData.response.body.items[0];
+                    const nearUrl = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getNearbyMsrstnList?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&tmX=${tmX}&tmY=${tmY}`;
+                    const nearRes = await fetch(nearUrl); const nearData = JSON.parse(await nearRes.text());
+                    if (nearData.response?.header?.resultCode === "00" && nearData.response.body?.items?.length > 0) targetStation = nearData.response.body.items[0].stationName; 
+                }
+            }
+
+            if (targetStation) {
+                const dustUrl = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&numOfRows=1&pageNo=1&stationName=${encodeURIComponent(targetStation)}&dataTerm=DAILY&ver=1.3`;
+                const dustRes = await fetch(dustUrl); const dustText = await dustRes.text();
+                const dustErr = parseOpenApiError(dustText); if (dustErr) throw new Error(`[환경공단 대기질 API] ${dustErr}`);
+                
+                const dustData = JSON.parse(dustText);
+                if (dustData.response?.header?.resultCode === "00" && dustData.response.body?.items?.length > 0) {
+                    return { ...dustData.response.body.items[0], stationName: targetStation, sido, sigungu };
+                }
+            }
+            
+            return await fetchDustFallback(sido, sigungu, address);
+        }
+
+        async function fetchDustFallback(sido, sigungu, address) {
+            const url = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty?ServiceKey=${encodeURIComponent(API_KEY)}&returnType=json&numOfRows=100&pageNo=1&sidoName=${encodeURIComponent(sido)}&ver=1.3`;
+            const res = await fetch(url); const text = await res.text();
+            const err = parseOpenApiError(text); if (err) throw new Error(`[환경공단 전체 대기질 API] ${err}`);
+            
+            const data = JSON.parse(text);
+            if(data.response?.header?.resultCode !== "00") throw new Error(`[환경공단 API] ${data.response?.header?.resultMsg}`);
+            
+            const items = data.response.body.items;
+            let stationData = items.find(item => address.includes(item.stationName)) ||
+                              items.find(item => { const keyword = item.stationName.replace(/[동읍면]$/, ''); return keyword.length >= 2 && address.includes(keyword); }) ||
+                              items.find(item => item.stationName.includes(sigungu.split(' ')[0].replace(/[시군구]$/, ''))) ||
+                              items.find(item => item.stationName.includes(sigungu.split(' ').pop().replace(/[시군구]$/, ''))) || items[0];
+            return { ...stationData, sido, sigungu };
+        }
+
+        // ================= UI Updates (Weather & Dust) =================
+        function updateCurrentWeatherUI(temp, sky, pty, reh, wsd, rn1) {
+            document.getElementById('temp').textContent = `${temp}°`;
+            const info = (pty !== "0") ? (pty==="1"||pty==="4"||pty==="5"?{i:"🌧️",d:pty==="4"?"소나기":"비"}:pty==="3"||pty==="7"?{i:"❄️",d:"눈"}:{i:"🌨️",d:"비/눈"}) 
+                                       : (sky==="1"?{i:"☀️",d:"맑음"}:sky==="3"?{i:"⛅",d:"구름많음"}:{i:"☁️",d:"흐림"});
+            document.getElementById('weatherIcon').textContent = info.i;
+            document.getElementById('weatherDesc').textContent = info.d;
+            
+            document.getElementById('currentReh').textContent = `${reh}%`;
+            document.getElementById('currentWsd').textContent = `${wsd}m/s`;
+            
+            let rainText = rn1;
+            if(rn1 === "0" || rn1 === "강수없음") rainText = "-";
+            else if (!rn1.includes("mm")) rainText = `${rn1}mm`;
+            document.getElementById('currentRn1').textContent = rainText;
+        }
+
+        function updateHourlyWeatherUI(hourlyList) {
+            const container = document.getElementById('hourlyContainer');
+            container.innerHTML = '';
+            
+            const nowDate = new Date();
+            const todayStr = `${nowDate.getFullYear()}${String(nowDate.getMonth()+1).padStart(2,'0')}${String(nowDate.getDate()).padStart(2,'0')}`;
+            
+            hourlyList.forEach((data, index) => {
+                const info = (data.pty !== "0") ? (data.pty==="1"||data.pty==="4"||data.pty==="5"?{i:"🌧️"}:data.pty==="3"||data.pty==="7"?{i:"❄️"}:{i:"🌨️"}) : (data.sky==="1"?{i:"☀️"}:data.sky==="3"?{i:"⛅"}:{i:"☁️"});
+                const month = parseInt(data.date.substring(4, 6), 10); const day = parseInt(data.date.substring(6, 8), 10);
+                let rainText = data.pcp; if (rainText && rainText.includes("미만")) rainText = "~1mm"; 
+                const hasRain = data.pcp && data.pcp !== "강수없음" && data.pcp !== "0mm" && data.pcp !== "0";
+                
+                const isTomorrow = data.date !== todayStr;
+                const bgClass = isTomorrow ? 'bg-yellow-50 border-yellow-100' : 'bg-white border-gray-100';
+                const innerBgClass = isTomorrow ? 'bg-white/60' : 'bg-gray-50';
+                const dateTextColor = isTomorrow ? 'text-yellow-600' : 'text-blue-400';
+                
+                container.innerHTML += `
+                    <div class="flex flex-col items-center min-w-[5.5rem] snap-center ${bgClass} rounded-2xl py-3.5 px-2 border shadow-sm flex-shrink-0 select-none transition-colors">
+                        <span class="text-[9px] ${dateTextColor} font-bold mb-0.5">${month}.${day}</span>
+                        <span class="text-[12px] text-gray-700 font-bold mb-1 tracking-wider">${data.time.substring(0, 2)}시${index === 0 ? '<span class="text-blue-500">*</span>' : ''}</span>
+                        <span class="text-3xl mb-1.5 drop-shadow-sm">${info.i}</span>
+                        <span class="text-[15px] font-black text-gray-800 mb-3">${data.temp}°</span>
+                        <div class="w-full flex flex-col gap-1 text-[10px] text-gray-600 font-semibold ${innerBgClass} rounded-lg p-1.5">
+                            <div class="flex justify-between"><div class="flex items-center gap-0.5"><span class="text-blue-400 text-[11px]">💧</span><span class="text-[9px] text-gray-400">습도</span></div><span>${data.reh}%</span></div>
+                            <div class="flex justify-between"><div class="flex items-center gap-0.5"><span class="text-gray-400 text-[11px]">💨</span><span class="text-[9px] text-gray-400">바람</span></div><span>${data.wsd}m/s</span></div>
+                            ${hasRain ? `<div class="flex justify-between text-blue-600"><div class="flex items-center gap-0.5"><span class="text-[11px]">☔</span><span class="text-[9px] text-blue-400/80">강수</span></div><span>${rainText}</span></div>` 
+                                      : `<div class="flex justify-between opacity-30 grayscale"><div class="flex items-center gap-0.5"><span class="text-[11px]">☔</span><span class="text-[9px]">강수</span></div><span>-</span></div>`}
+                        </div>
+                    </div>`;
+            });
+        }
+
+        const DUST_ICONS = {
+            "1": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#38BDF8"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><path d="M 38 50 Q 42 45 46 50" stroke="#333" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 54 50 Q 58 45 62 50" stroke="#333" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="33" cy="58" r="4" fill="#ffA0A0" opacity="0.6"/><circle cx="67" cy="58" r="4" fill="#ffA0A0" opacity="0.6"/><path d="M 45 56 Q 50 66 55 56 Z" fill="#333"/><path d="M 47 57 Q 50 64 53 57 Z" fill="#EF4444"/></svg>`,
+            "2": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#84CC16"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><circle cx="41" cy="49" r="3.5" fill="#333"/><circle cx="59" cy="49" r="3.5" fill="#333"/><circle cx="33" cy="56" r="4" fill="#ffA0A0" opacity="0.6"/><circle cx="67" cy="56" r="4" fill="#ffA0A0" opacity="0.6"/><path d="M 46 56 Q 50 60 54 56" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
+            "3": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#F97316"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><line x1="37" y1="50" x2="45" y2="50" stroke="#333" stroke-width="3" stroke-linecap="round"/><line x1="55" y1="50" x2="63" y2="50" stroke="#333" stroke-width="3" stroke-linecap="round"/><circle cx="33" cy="56" r="4" fill="#ffA0A0" opacity="0.8"/><circle cx="67" cy="56" r="4" fill="#ffA0A0" opacity="0.8"/><line x1="48" y1="58" x2="52" y2="58" stroke="#333" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+            "4": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#EF4444"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><path d="M 38 46 L 44 52 M 44 46 L 38 52" stroke="#333" stroke-width="2.5" stroke-linecap="round"/><path d="M 56 46 L 62 52 M 62 46 L 56 52" stroke="#333" stroke-width="2.5" stroke-linecap="round"/><circle cx="33" cy="58" r="4" fill="#ffA0A0" opacity="0.8"/><circle cx="67" cy="58" r="4" fill="#ffA0A0" opacity="0.8"/><path d="M 46 60 Q 50 56 54 60" stroke="#333" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>`,
+            "default": `<svg viewBox="0 0 100 100" class="w-14 h-14 mx-auto drop-shadow-sm transition-transform hover:scale-110" xmlns="http://www.w3.org/2000/svg"><path d="M 35 25 Q 50 15 65 25" stroke="#E5E7EB" stroke-width="3" fill="none" stroke-linecap="round"/><rect x="40" y="15" width="6" height="4" fill="#3B82F6" rx="1.5"/><rect x="47" y="15" width="6" height="4" fill="#10B981" rx="1.5"/><rect x="54" y="15" width="6" height="4" fill="#EF4444" rx="1.5"/><rect x="15" y="30" width="70" height="60" rx="30" fill="#9CA3AF"/><ellipse cx="50" cy="55" rx="28" ry="22" fill="white" /><circle cx="41" cy="49" r="3" fill="#333"/><circle cx="59" cy="49" r="3" fill="#333"/><path d="M 46 58 L 54 58" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`
+        };
+
+        const gInfo = {
+            "1": { text: "좋음", color: "bg-blue-100 text-blue-700", dot: "text-blue-500" },
+            "2": { text: "보통", color: "bg-green-100 text-green-700", dot: "text-green-500" },
+            "3": { text: "나쁨", color: "bg-orange-100 text-orange-600", dot: "text-orange-500" },
+            "4": { text: "매우나쁨", color: "bg-red-100 text-red-700", dot: "text-red-500" },
+            "default": { text: "정보없음", color: "bg-gray-100 text-gray-500", dot: "text-gray-400" }
+        };
+
+        function getSmallCardGrade(gradeStr) {
+            return gInfo[gradeStr] || gInfo["default"];
+        }
+
+        function updateDustUI(item) {
+            document.getElementById('stationNameDisplay').textContent = `측정소: ${item.stationName || "--"} (${item.sido || ""} ${item.sigungu || ""})`;
+            
+            // 메인 PM10, PM2.5
+            const p10 = gInfo[item.pm10Grade] || gInfo["default"];
+            document.getElementById('pm10Value').textContent = item.pm10Value && item.pm10Value !== "-" ? item.pm10Value : "0";
+            document.getElementById('pm10Grade').textContent = p10.text;
+            document.getElementById('pm10Grade').className = `mt-3 px-4 py-1.5 rounded-full text-xs font-bold w-full ${p10.color}`;
+            document.getElementById('pm10Icon').innerHTML = DUST_ICONS[item.pm10Grade] || DUST_ICONS["default"];
+
+            const p25 = gInfo[item.pm25Grade] || gInfo["default"];
+            document.getElementById('pm25Value').textContent = item.pm25Value && item.pm25Value !== "-" ? item.pm25Value : "0";
+            document.getElementById('pm25Grade').textContent = p25.text;
+            document.getElementById('pm25Grade').className = `mt-3 px-4 py-1.5 rounded-full text-xs font-bold w-full ${p25.color}`;
+            document.getElementById('pm25Icon').innerHTML = DUST_ICONS[item.pm25Grade] || DUST_ICONS["default"];
+
+            // 6대 물질 추가: O3, NO2, CO, SO2
+            const setupSmallCard = (idPrefix, val, gradeStr) => {
+                document.getElementById(`${idPrefix}Value`).textContent = val && val !== "-" ? val : "0";
+                const info = getSmallCardGrade(gradeStr);
+                const el = document.getElementById(`${idPrefix}Grade`);
+                el.textContent = info.text;
+                el.className = `text-[10px] font-bold px-2 py-0.5 rounded mt-1 inline-block w-full ${info.color}`;
+            };
+
+            setupSmallCard('o3', item.o3Value, item.o3Grade);
+            setupSmallCard('no2', item.no2Value, item.no2Grade);
+            setupSmallCard('co', item.coValue, item.coGrade);
+            setupSmallCard('so2', item.so2Value, item.so2Grade);
+        }
+
+        // Settings Modal Event Listeners
+        document.getElementById('settingsOpenBtn').addEventListener('click', () => {
+            document.getElementById('settingsModal').classList.remove('hidden');
+            document.getElementById('settingMsg').textContent = "";
+        });
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => document.getElementById('settingsModal').classList.add('hidden'));
+        document.getElementById('settingsModal').addEventListener('click', (e) => { if (e.target === document.getElementById('settingsModal')) document.getElementById('settingsModal').classList.add('hidden'); });
+
+        document.getElementById('settingSearchBtn').addEventListener('click', async () => {
+            const keyword = document.getElementById('settingSchoolSearch').value.trim();
+            const msgEl = document.getElementById('settingMsg');
+            const selectEl = document.getElementById('settingSchoolSelect');
+            if(!keyword) { msgEl.textContent = "학교명을 입력해주세요."; msgEl.className = "text-xs text-red-500 mb-3 text-center font-medium h-4"; return; }
+            
+            selectEl.innerHTML = '<option value="">검색 중...</option>'; selectEl.classList.remove('hidden'); selectEl.disabled = true; msgEl.textContent = "";
+            try {
+                const res = await fetch(`https://open.neis.go.kr/hub/schoolInfo?KEY=${NEIS_API_KEY}&Type=json&pIndex=1&pSize=50&SCHUL_NM=${encodeURIComponent(keyword)}`);
+                const data = await res.json(); if(!data.schoolInfo) throw new Error("검색 결과가 없습니다.");
+                selectEl.innerHTML = '<option value="">▼ 저장할 학교를 선택하세요</option>';
+                data.schoolInfo[1].row.forEach(s => {
+                    const sido = sidoNameMap[s.LCTN_SC_NM] || s.LCTN_SC_NM.substring(0, 2);
+                    const parts = s.ORG_RDNMA.split(' '); let sigungu = parts[1]; if (parts.length > 2 && parts[2].endsWith('구')) sigungu += ' ' + parts[2];
+                    const val = JSON.stringify({ schoolName: s.SCHUL_NM, sido, fullSido: s.LCTN_SC_NM, sigungu, address: s.ORG_RDNMA });
+                    selectEl.innerHTML += `<option value='${val}'>${s.SCHUL_NM} (${s.ORG_RDNMA})</option>`;
+                });
+                selectEl.disabled = false;
+            } catch(e) { selectEl.innerHTML = `<option value="">${e.message}</option>`; }
+        });
+
+        document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+            const val = document.getElementById('settingSchoolSelect').value;
+            const msgEl = document.getElementById('settingMsg');
+            if(val) {
+                localStorage.setItem('defaultSchoolInfo', val);
+                msgEl.className = "text-xs text-blue-600 mb-3 text-center font-medium h-4"; msgEl.textContent = "저장되었습니다! 화면을 새로고침합니다.";
+                setTimeout(() => location.reload(), 800);
+            } else {
+                msgEl.className = "text-xs text-red-500 mb-3 text-center font-medium h-4"; msgEl.textContent = "목록에서 학교를 정확히 선택해주세요.";
+            }
+        });
+
+        initApp();
+    </script>
+</body>
+</html>
